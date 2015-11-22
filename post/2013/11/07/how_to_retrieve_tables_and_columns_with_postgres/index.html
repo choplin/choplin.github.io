@@ -1,0 +1,327 @@
+<!DOCTYPE HTML>
+
+<html lang="ja-JP">
+
+<head>
+	<meta charset="utf-8">
+	<title>PostgreSQLでテーブル名カラム名を取得する方法 - still deeper</title>
+	<meta name="author" content="map[author:Akihiro Okuno]">
+
+	
+	
+	<meta name="description" content="">
+	
+
+	
+	<meta name="HandheldFriendly" content="True">
+	<meta name="MobileOptimized" content="320">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+    
+	<link href='http://chopl.in/index.xml' rel="alternate" title="still deeper" type="application/atom+xml">
+	
+	<link rel="canonical" href="http://chopl.in/post/2013/11/07/how_to_retrieve_tables_and_columns_with_postgres/">
+	<link href="http://chopl.in//favicon.png" rel="shortcut icon">
+	<link href="http://chopl.in//css/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+	<link href="http://chopl.in//css/font-awesome.min.css" media="screen, projection" rel="stylesheet" type="text/css">
+	
+	<link href='http://fonts.googleapis.com/css?family=Nunito:400,300,700' rel='stylesheet' type='text/css'>
+	<script src="//ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+	
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.7/styles/tomorrow-night.min.css">
+
+<script src="http://chopl.in/js/highlight.pack.js"></script>
+<script>
+(function(){
+  function overwriteNoHighlight() {
+    var blocks = document.querySelectorAll('pre code');
+    Array.prototype.forEach.call(blocks, function(block) {
+      if (block.className == "") {
+        block.className = "language-no-highlight hljs";
+      }
+    });
+  }
+  addEventListener('DOMContentLoaded', overwriteNoHighlight, false);
+  addEventListener('load', overwriteNoHighlight, false);
+})();
+hljs.initHighlightingOnLoad();
+</script>
+
+<link rel="stylesheet" href="http://chopl.in/css/custom.css">
+
+  
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', 'UA-17761815-3']);
+		_gaq.push(['_trackPageview']);
+
+		(function() {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+
+
+</head>
+
+
+<body>
+	<div class="container">
+		<div class="left-col">
+			<div class="intrude-less">
+			<header id="header" class="inner"><div class="profilepic">
+	
+	<img src='http://www.gravatar.com/avatar/8a820699dff43e6b707a488b592e7a21?s=160' alt="Profile Picture" style="width: 160px;" />
+	
+</div>
+<h2>still deeper</h2>
+choplin&#39;s blog
+
+<nav id="main-nav"><ul class="main">
+    <li><a href="http://chopl.in/">Home</a></li>
+    <li><a href="http://chopl.in/post/">Archive</a></li>
+</ul>
+
+</nav>
+<nav id="sub-nav">
+	<div class="social">
+		
+		
+			<a class="facebook" href='http://www.facebook.com/okuno.akihiro' title="Facebook">Facebook</a>
+		
+		
+		
+			<a class="twitter" href='http://twitter.com/choplin' title="Twitter">Twitter</a>
+		
+		
+			<a class="github" href='https://github.com/choplin' title="GitHub">GitHub</a>
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+    	
+    	
+			<a class="rss" href='http://chopl.in/index.xml' title="RSS">RSS</a>
+		
+	</div>
+</nav>
+</header>
+			</div>
+		</div>
+		<div class="mid-col">
+			
+			<div class="mid-col-container">
+				<div id="content" class="inner">
+					<div itemscope itemtype="http://schema.org/Blog">
+					<article class="post" itemscope itemtype="http://schema.org/BlogPosting"><h1 class="title" itemprop="name">PostgreSQLでテーブル名カラム名を取得する方法</h1>
+
+<div class="single-meta">
+  <span class="date"><time datetime='Thu, Nov 7, 2013' data-updated="true" itemprop="datePublished">Thu, Nov 7, 2013</time></span>
+  <span class="categories">
+
+
+	
+	
+	    <a href="http://chopl.in//categories/programming"> Programming </a>
+	
+
+
+</span>
+  <span class="tags">
+
+
+	
+	
+	    <a href="http://chopl.in//tags/postgresql"> PostgreSQL </a>
+	
+
+
+</span>
+</div>
+
+<div class="entry-content" itemprop="articleBody">
+
+<h2 id="motivation:781493656d1c58c584dc4bcec54d5d78">Motivation</h2>
+
+<p><a href="http://exiz.org/database/postgres/2013110716431/">PostgreSQLのテーブルのカラム情報などを取得する | ExiZ.org</a> を読んで気になったのでコメントしておきます</p>
+
+<h2 id="結論:781493656d1c58c584dc4bcec54d5d78">結論</h2>
+
+<p>psqlで\d使おう。</p>
+
+<h2 id="元エントリのクエリ:781493656d1c58c584dc4bcec54d5d78">元エントリのクエリ</h2>
+
+<p>基本的には問題ないのですが</p>
+
+<pre><code class="language-sql">SELECT
+    relname AS table_name
+FROM
+    pg_stat_user_tables
+</code></pre>
+
+<p><code>pg_stat</code> というテーブルは標準統計情報ビューと呼ばれます。ざっくりと説明すると、PostgreSQLは自身がどう使われているかについての情報を収集する機能があり、統計情報ビューを通してその情報を見ることができます。</p>
+
+<p>このクエリの <code>pg_stat_user_tables</code> というビューではユーザーが定義したテーブルへのアクセスの状況を見ることができます。例えば、テーブルの大体の行数を調べたい時には、 <code>select count(*)</code> で計算しなおすのではなくて、このビューの <code>n_live_tup</code> を見ると分かります。</p>
+
+<p><a href="http://www.postgresql.jp/document/current/html/monitoring-stats.html">統計情報コレクタ</a></p>
+
+<pre><code class="language-sql">SELECT
+    *
+FROM
+    information_schema.columns
+WHERE
+    table_name = 'テーブル名'
+ORDER BY
+    ordinal_position;
+</code></pre>
+
+<p><code>information_schema</code> とはデータベース内の様々メタデータを取得するために標準SQLで定められているビューの集合です。PostgreSQLでは直接メタデータを格納しているテーブルへのビューとして定義されています。</p>
+
+<p>SQLの移植性を高めるという点ではinformation_schemaを用いる方が正解かも知れませんが、直接PostgreSQLでのメタデータのテーブルへ問い合わせる方が、少し&rdquo;らしい&rdquo;かも。<sup class="footnote-ref" id="fnref:781493656d1c58c584dc4bcec54d5d78:1"><a rel="footnote" href="#fn:781493656d1c58c584dc4bcec54d5d78:1">1</a></sup></p>
+
+<p><a href="http://www.postgresql.jp/document/current/html/information-schema.html">情報スキーマ</a></p>
+
+<h2 id="システムカタログ:781493656d1c58c584dc4bcec54d5d78">システムカタログ</h2>
+
+<p>システムカタログとはPostgreSQL内のメタデータを管理するテーブルです。 <code>CREATE TABLE</code> や <code>ALTER INDEX</code> などのDDLを実行すると、このテーブルの値が書き換わります。</p>
+
+<p>DB内部での処理も実際にこのテーブルの値を通して各種のメタデータへアクセスするようになっています。 <sup class="footnote-ref" id="fnref:781493656d1c58c584dc4bcec54d5d78:2"><a rel="footnote" href="#fn:781493656d1c58c584dc4bcec54d5d78:2">2</a></sup> 即ち、内部での処理に利用する値がテーブルとして公開されており、ユーザーからSQLを通して取得できるようになっている、というわけです。 DBで管理している種々のメタデータがそのままユーザーに公開されているというのはPostgreSQLの一つの特徴といえるかもしれません。</p>
+
+<p>管理する対象に応じて色々なテーブルがあるので、こちらを参照して下さい。</p>
+
+<p><a href="http://www.postgresql.jp/document/current/html/catalogs.html">システムカタログ</a></p>
+
+<p>これらのシステムカタログを経由してテーブルや列の一覧を取得することができます。</p>
+
+<h2 id="テーブルの一覧を取得:781493656d1c58c584dc4bcec54d5d78">テーブルの一覧を取得</h2>
+
+<p><code>pg_class</code> を参照します。</p>
+
+<pre><code class="language-sql">SELECT
+    *
+FROM
+    pg_class
+</code></pre>
+
+<p>そのままだとインデックスやシステムテーブルまで入ってきてしまうので、 <code>relnamespace</code> でスキーマを指定したり、 <code>relkind</code> で通常テーブルだけを指定したりなどで絞りこむといいです。</p>
+
+<p><a href="http://www.postgresql.jp/document/current/html/catalog-pg-class.html">pg_class</a></p>
+
+<h2 id="列の一覧を取得:781493656d1c58c584dc4bcec54d5d78">列の一覧を取得</h2>
+
+<p><code>pg_attribute</code> を参照します。</p>
+
+<pre><code class="language-sql">SELECT
+    *
+FROM
+    pg_attribute
+WHERE
+    attrelid = 'your_table_name'::regclass;
+</code></pre>
+
+<p><code>attrelid</code> という列はその列がどのテーブルに属しているかを持っています。型はOIDというPostgreSQL内部で行を一意に指定するための型です。 <sup class="footnote-ref" id="fnref:781493656d1c58c584dc4bcec54d5d78:3"><a rel="footnote" href="#fn:781493656d1c58c584dc4bcec54d5d78:3">3</a></sup> OID自体は数値でユーザーが指定しにくいため、pg_classなど幾つかのテーブルの行については、分かりやすいtextから直接OIDへキャストできる方法が提供されています。</p>
+
+<p>こちらもそのままだとシステム列や既に削除された列が含まれてしまいます。 <code>attnum &gt; 0</code> でシステム列を除いたり、 <code>NOT attisdropped</code> で削除された列を除いたりすることが必要でしょう。</p>
+
+<p><a href="http://www.postgresql.jp/document/current/html/catalog-pg-attribute.html">pg_attribute</a></p>
+
+<h2 id="psql:781493656d1c58c584dc4bcec54d5d78">psql</h2>
+
+<p>上記の方法はSQLを通してテーブルや列の一覧を取得する方法です。取得したテーブル名や列名を利用して何か処理するといったメタなSQLを書く必要があれば、こうした方法を取る必要がありますが、実際には一覧を見れれば十分なケースが殆どでしょう。</p>
+
+<p>クライアントとしてpsqlを利用していれば簡単に確認することが可能です。通常はこちらを利用するべきでしょう。</p>
+
+<dl>
+    <dt>\d</dt>
+    <dd>テーブル一覧</dd>
+    <dt>\d table_name</dt>
+    <dd>指定したテーブルの列一覧</dd>
+</dl>
+<div class="footnotes">
+
+<hr />
+
+<ol>
+<li id="fn:781493656d1c58c584dc4bcec54d5d78:1">information_schema経由だとpostgres特有の情報を取得できないという事情もあります
+ <a class="footnote-return" href="#fnref:781493656d1c58c584dc4bcec54d5d78:1"><sup>[return]</sup></a></li>
+<li id="fn:781493656d1c58c584dc4bcec54d5d78:2">本当はSysCache経由
+ <a class="footnote-return" href="#fnref:781493656d1c58c584dc4bcec54d5d78:2"><sup>[return]</sup></a></li>
+<li id="fn:781493656d1c58c584dc4bcec54d5d78:3">実際には周回するので一意性は保証されていないのですが
+ <a class="footnote-return" href="#fnref:781493656d1c58c584dc4bcec54d5d78:3"><sup>[return]</sup></a></li>
+</ol>
+</div>
+</div>
+</article>
+					
+						<div class="share">
+	<div class="addthis_toolbox addthis_default_style ">
+	
+	<a class="addthis_button_facebook_like" fb:like:layout="button_count"></a>
+	
+	
+	<a class="addthis_button_tweet"></a>
+	
+	
+	<a class="addthis_button_google_plusone" g:plusone:size=''></a>
+	
+	
+	</div>
+	
+  	<script type="text/javascript" src='http://s7.addthis.com/js/250/addthis_widget.js#pubid='></script>
+  	
+</div>
+
+					
+					
+					<section id="comment">
+					    <h1 class="title">Comments</h1>
+					    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+					</section>
+					
+					
+
+<script type="text/javascript">
+    
+    var disqus_shortname = 'choplinblog';
+
+    
+    
+
+    
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+    
+</script>
+
+
+				    </div>
+				</div>
+			</div>
+			<footer id="footer" class="inner">Copyright &copy; 2015
+
+    still deeper
+
+<script src="http://chopl.in//js/slash.js"></script>
+<script src="http://chopl.in//js/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+	$('.fancybox').fancybox();
+})(jQuery);
+</script>
+</footer>
+		</div>
+	</div>
+	
+</body>
+</html>

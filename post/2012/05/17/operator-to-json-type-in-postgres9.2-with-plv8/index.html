@@ -1,0 +1,373 @@
+<!DOCTYPE HTML>
+
+<html lang="ja-JP">
+
+<head>
+	<meta charset="utf-8">
+	<title>Operator to JSON type in PG9.2 with plv8 - still deeper</title>
+	<meta name="author" content="map[author:Akihiro Okuno]">
+
+	
+	
+	<meta name="description" content="">
+	
+
+	
+	<meta name="HandheldFriendly" content="True">
+	<meta name="MobileOptimized" content="320">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+    
+	<link href='http://chopl.in/index.xml' rel="alternate" title="still deeper" type="application/atom+xml">
+	
+	<link rel="canonical" href="http://chopl.in/post/2012/05/17/operator-to-json-type-in-postgres9.2-with-plv8/">
+	<link href="http://chopl.in//favicon.png" rel="shortcut icon">
+	<link href="http://chopl.in//css/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+	<link href="http://chopl.in//css/font-awesome.min.css" media="screen, projection" rel="stylesheet" type="text/css">
+	
+	<link href='http://fonts.googleapis.com/css?family=Nunito:400,300,700' rel='stylesheet' type='text/css'>
+	<script src="//ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+	
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.7/styles/tomorrow-night.min.css">
+
+<script src="http://chopl.in/js/highlight.pack.js"></script>
+<script>
+(function(){
+  function overwriteNoHighlight() {
+    var blocks = document.querySelectorAll('pre code');
+    Array.prototype.forEach.call(blocks, function(block) {
+      if (block.className == "") {
+        block.className = "language-no-highlight hljs";
+      }
+    });
+  }
+  addEventListener('DOMContentLoaded', overwriteNoHighlight, false);
+  addEventListener('load', overwriteNoHighlight, false);
+})();
+hljs.initHighlightingOnLoad();
+</script>
+
+<link rel="stylesheet" href="http://chopl.in/css/custom.css">
+
+  
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', 'UA-17761815-3']);
+		_gaq.push(['_trackPageview']);
+
+		(function() {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+
+
+</head>
+
+
+<body>
+	<div class="container">
+		<div class="left-col">
+			<div class="intrude-less">
+			<header id="header" class="inner"><div class="profilepic">
+	
+	<img src='http://www.gravatar.com/avatar/8a820699dff43e6b707a488b592e7a21?s=160' alt="Profile Picture" style="width: 160px;" />
+	
+</div>
+<h2>still deeper</h2>
+choplin&#39;s blog
+
+<nav id="main-nav"><ul class="main">
+    <li><a href="http://chopl.in/">Home</a></li>
+    <li><a href="http://chopl.in/post/">Archive</a></li>
+</ul>
+
+</nav>
+<nav id="sub-nav">
+	<div class="social">
+		
+		
+			<a class="facebook" href='http://www.facebook.com/okuno.akihiro' title="Facebook">Facebook</a>
+		
+		
+		
+			<a class="twitter" href='http://twitter.com/choplin' title="Twitter">Twitter</a>
+		
+		
+			<a class="github" href='https://github.com/choplin' title="GitHub">GitHub</a>
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+    	
+    	
+			<a class="rss" href='http://chopl.in/index.xml' title="RSS">RSS</a>
+		
+	</div>
+</nav>
+</header>
+			</div>
+		</div>
+		<div class="mid-col">
+			
+			<div class="mid-col-container">
+				<div id="content" class="inner">
+					<div itemscope itemtype="http://schema.org/Blog">
+					<article class="post" itemscope itemtype="http://schema.org/BlogPosting"><h1 class="title" itemprop="name">Operator to JSON type in PG9.2 with plv8</h1>
+
+<div class="single-meta">
+  <span class="date"><time datetime='Thu, May 17, 2012' data-updated="true" itemprop="datePublished">Thu, May 17, 2012</time></span>
+  <span class="categories">
+
+
+	
+	
+	    <a href="http://chopl.in//categories/programming"> Programming </a>
+	
+
+
+</span>
+  <span class="tags">
+
+
+	
+	
+		<a href="http://chopl.in//tags/db"> DB </a>,
+	
+
+	
+	
+		<a href="http://chopl.in//tags/postgresql"> PostgreSQL </a>,
+	
+
+	
+	
+	    <a href="http://chopl.in//tags/javascript"> JavaScript </a>
+	
+
+
+</span>
+</div>
+
+<div class="entry-content" itemprop="articleBody">
+
+<h2 id="pg9-2:6d48487390437db4a603f125af4d0829">Pg9.2</h2>
+
+<p>ついにPostgres9.2の <a href="http://www.postgresql.org/about/news/1395/">beta1</a> がきましたね。先進的な象使いのみなさまは既にビルド済みのことと思います。私もgitのheadをビクビクしながらビルドするのではなくて、tagから9.2のbranchを切ることできてほっとしております。</p>
+
+<p>9.2には様々な機能性能が目白押しですが、そんな中ついに待望のJSON型サポートが追加されました。</p>
+
+<p><a href="http://www.postgresql.org/docs/devel/static/datatype-json.html">PostgreSQL: Documentation: Manuals: JSON Type</a></p>
+
+<h2 id="json型で何ができるの:6d48487390437db4a603f125af4d0829">JSON型で何ができるの？</h2>
+
+<p>JSON型に関する機能としてコアで提供されているものは</p>
+
+<ol>
+<li>バリデーション</li>
+<li>JSON文字列の構築</li>
+</ol>
+
+<p>の2つです。</p>
+
+<h3 id="1-バリデーション:6d48487390437db4a603f125af4d0829">1.バリデーション</h3>
+
+<p>JSON型を指定することによってValidなJSONであることを保証できます。</p>
+
+<pre><code class="language-sql">-- valid
+json=# SELECT '{&quot;a&quot;:1}'::json;
+  json
+---------
+ {&quot;a&quot;:1}
+(1 row)
+
+-- invalid
+json=# SELECT '{a:1}'::json;
+ERROR:  invalid input syntax for type json at character 8
+DETAIL:  line 1: Token &quot;a&quot; is invalid.
+STATEMENT:  SELECT '{a:1}'::json;
+ERROR:  invalid input syntax for type json
+LINE 1: SELECT '{a:1}'::json;
+               ^
+DETAIL:  line 1: Token &quot;a&quot; is invalid.
+</code></pre>
+
+<h3 id="2-json文字列の構築:6d48487390437db4a603f125af4d0829">2.JSON文字列の構築</h3>
+
+<ul>
+<li>配列からJSON文字列を構築する <code>array_to_json</code></li>
+<li>ROW型からJSON文字列を構築する <code>row_to_json</code></li>
+</ul>
+
+<p>が提供されています。</p>
+
+<p><a href="http://www.postgresql.org/docs/devel/static/functions-json.html">PostgreSQL: Documentation: Manuals: JSON Functions</a></p>
+
+<pre><code class="language-sql">json=# select array_to_json(ARRAY[1,2,3]);
+ array_to_json
+---------------
+ [1,2,3]
+(1 row)
+
+json=# select row_to_json(ROW(1,2,3));
+      row_to_json
+------------------------
+ {&quot;f1&quot;:1,&quot;f2&quot;:2,&quot;f3&quot;:3}
+(1 row)
+</code></pre>
+
+<h3 id="それだけ:6d48487390437db4a603f125af4d0829">それだけ？</h3>
+
+<p>現状ではこれだけです。基本的にJSON型の値に対する操作は一切提供されていません。</p>
+
+<h3 id="中身は取れる:6d48487390437db4a603f125af4d0829">中身は取れる？</h3>
+
+<p>取れません。正規表現を使えばあるいは可能かも。</p>
+
+<h3 id="whereで絞り込める:6d48487390437db4a603f125af4d0829">whereで絞り込める？</h3>
+
+<p>できません。演算子は何も提供されていません。</p>
+
+<h3 id="indexは張れる:6d48487390437db4a603f125af4d0829">Indexは張れる？</h3>
+
+<p>もちろん張れません。</p>
+
+<h2 id="workaround:6d48487390437db4a603f125af4d0829">Workaround</h2>
+
+<p>どうしてもPG9.2でJSON型の操作がしたいのであれば、 <a href="http://code.google.com/p/plv8js/wiki/PLV8">plv8js</a> を使って自分で演算子を定義してしまうのがオススメかなと思います。</p>
+
+<p>そんなワガママなあなたの為にちょこっと書いておきました。</p>
+
+<script src="https://gist.github.com/choplin/2719269.js"></script>
+
+<h3 id="indexも張れます:6d48487390437db4a603f125af4d0829">Indexも張れます</h3>
+
+<p>上で定義した演算子と <a href="http://www.postgresql.jp/document/9.1/html/indexes-expressional.html">式インデックス</a> を組み合わせることでインデックスを張ることもできます。</p>
+
+<pre><code class="language-sql">-- データ準備
+CREATE TABLE test (
+    id serial
+    ,json json
+);
+
+INSERT INTO test(json)
+SELECT ('{&quot;a&quot;:' || round(random() * 10000) || '}')::json
+FROM generate_series(1,10000);
+
+CREATE INDEX i_test_json ON test(((json @ 'a')::text::int));
+
+-- クエリ
+json=# EXPLAIN SELECT * FROM test WHERE (json @ 'a')::text::int = 30 ;                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Bitmap Heap Scan on test  (cost=4.91..74.77 rows=50 width=36)
+   Recheck Cond: ((((json @ 'a'::text))::text)::integer = 30)
+   -&gt;  Bitmap Index Scan on i_test_json  (cost=0.00..4.90 rows=50 width=0)
+         Index Cond: ((((json @ 'a'::text))::text)::integer = 30)
+(4 rows)
+
+json=# EXPLAIN SELECT * FROM test WHERE (json @ 'a')::text::int &gt; 30 ;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Index Scan using i_test_json on test  (cost=0.26..318.85 rows=3333 width=36)
+   Index Cond: ((((json @ 'a'::text))::text)::integer &gt; 30)
+(2 rows)
+</code></pre>
+
+<h2 id="まとめ:6d48487390437db4a603f125af4d0829">まとめ</h2>
+
+<p>Postgresの拡張性を活かせばJSON型の値を操作することは簡単にできます。ですが、PosgresでJSON型を操作するには</p>
+
+<ul>
+<li><p>標準でない演算子を用いてしまうとSQLのポータビリティが低くなる</p>
+
+<ul>
+<li>最悪のケースでは今後のバージョンで@演算子が別の意味で使われてしまい全く動かなくなる可能性が</li>
+</ul></li>
+
+<li><p>JSON内の値は数値、文字列、Boolean、配列、オブジェクトなど様々な型の可能性があるので扱いが難しい</p>
+
+<ul>
+<li>キャストもめんどくさい</li>
+</ul></li>
+
+<li><p>（パフォーマンスは計測してないので不明）</p></li>
+</ul>
+
+<p>などの問題があります。リスクを認識した上で使いたい人は使うといいと思います。</p>
+
+<p>9.2には他にも熱い機能や性能アップがあるのでまだビルドしていない人は早くビルドして試して下さい。</p>
+</div>
+</article>
+					
+						<div class="share">
+	<div class="addthis_toolbox addthis_default_style ">
+	
+	<a class="addthis_button_facebook_like" fb:like:layout="button_count"></a>
+	
+	
+	<a class="addthis_button_tweet"></a>
+	
+	
+	<a class="addthis_button_google_plusone" g:plusone:size=''></a>
+	
+	
+	</div>
+	
+  	<script type="text/javascript" src='http://s7.addthis.com/js/250/addthis_widget.js#pubid='></script>
+  	
+</div>
+
+					
+					
+					<section id="comment">
+					    <h1 class="title">Comments</h1>
+					    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+					</section>
+					
+					
+
+<script type="text/javascript">
+    
+    var disqus_shortname = 'choplinblog';
+
+    
+    
+
+    
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+    
+</script>
+
+
+				    </div>
+				</div>
+			</div>
+			<footer id="footer" class="inner">Copyright &copy; 2015
+
+    still deeper
+
+<script src="http://chopl.in//js/slash.js"></script>
+<script src="http://chopl.in//js/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+	$('.fancybox').fancybox();
+})(jQuery);
+</script>
+</footer>
+		</div>
+	</div>
+	
+</body>
+</html>

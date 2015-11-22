@@ -1,0 +1,472 @@
+<!DOCTYPE HTML>
+
+<html lang="ja-JP">
+
+<head>
+	<meta charset="utf-8">
+	<title>Scalaで型クラス入門 - still deeper</title>
+	<meta name="author" content="map[author:Akihiro Okuno]">
+
+	
+	
+	<meta name="description" content="">
+	
+
+	
+	<meta name="HandheldFriendly" content="True">
+	<meta name="MobileOptimized" content="320">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+    
+	<link href='http://chopl.in/index.xml' rel="alternate" title="still deeper" type="application/atom+xml">
+	
+	<link rel="canonical" href="http://chopl.in/post/2012/11/06/introduction-to-typeclass-with-scala/">
+	<link href="http://chopl.in//favicon.png" rel="shortcut icon">
+	<link href="http://chopl.in//css/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+	<link href="http://chopl.in//css/font-awesome.min.css" media="screen, projection" rel="stylesheet" type="text/css">
+	
+	<link href='http://fonts.googleapis.com/css?family=Nunito:400,300,700' rel='stylesheet' type='text/css'>
+	<script src="//ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+	
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.7/styles/tomorrow-night.min.css">
+
+<script src="http://chopl.in/js/highlight.pack.js"></script>
+<script>
+(function(){
+  function overwriteNoHighlight() {
+    var blocks = document.querySelectorAll('pre code');
+    Array.prototype.forEach.call(blocks, function(block) {
+      if (block.className == "") {
+        block.className = "language-no-highlight hljs";
+      }
+    });
+  }
+  addEventListener('DOMContentLoaded', overwriteNoHighlight, false);
+  addEventListener('load', overwriteNoHighlight, false);
+})();
+hljs.initHighlightingOnLoad();
+</script>
+
+<link rel="stylesheet" href="http://chopl.in/css/custom.css">
+
+  
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', 'UA-17761815-3']);
+		_gaq.push(['_trackPageview']);
+
+		(function() {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+
+
+</head>
+
+
+<body>
+	<div class="container">
+		<div class="left-col">
+			<div class="intrude-less">
+			<header id="header" class="inner"><div class="profilepic">
+	
+	<img src='http://www.gravatar.com/avatar/8a820699dff43e6b707a488b592e7a21?s=160' alt="Profile Picture" style="width: 160px;" />
+	
+</div>
+<h2>still deeper</h2>
+choplin&#39;s blog
+
+<nav id="main-nav"><ul class="main">
+    <li><a href="http://chopl.in/">Home</a></li>
+    <li><a href="http://chopl.in/post/">Archive</a></li>
+</ul>
+
+</nav>
+<nav id="sub-nav">
+	<div class="social">
+		
+		
+			<a class="facebook" href='http://www.facebook.com/okuno.akihiro' title="Facebook">Facebook</a>
+		
+		
+		
+			<a class="twitter" href='http://twitter.com/choplin' title="Twitter">Twitter</a>
+		
+		
+			<a class="github" href='https://github.com/choplin' title="GitHub">GitHub</a>
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+    	
+    	
+			<a class="rss" href='http://chopl.in/index.xml' title="RSS">RSS</a>
+		
+	</div>
+</nav>
+</header>
+			</div>
+		</div>
+		<div class="mid-col">
+			
+			<div class="mid-col-container">
+				<div id="content" class="inner">
+					<div itemscope itemtype="http://schema.org/Blog">
+					<article class="post" itemscope itemtype="http://schema.org/BlogPosting"><h1 class="title" itemprop="name">Scalaで型クラス入門</h1>
+
+<div class="single-meta">
+  <span class="date"><time datetime='Tue, Nov 6, 2012' data-updated="true" itemprop="datePublished">Tue, Nov 6, 2012</time></span>
+  <span class="categories">
+
+
+	
+	
+	    <a href="http://chopl.in//categories/programming"> Programming </a>
+	
+
+
+</span>
+  <span class="tags">
+
+
+	
+	
+		<a href="http://chopl.in//tags/scala"> Scala </a>,
+	
+
+	
+	
+	    <a href="http://chopl.in//tags/functional-programming"> Functional Programming </a>
+	
+
+
+</span>
+</div>
+
+<div class="entry-content" itemprop="articleBody">
+
+<p>型クラスについてつらつら考えていたことをまとめておきます。マサカリ歓迎。</p>
+
+<h2 id="型クラスって:ddf777f65c6f902fd79034bf5064df77">型クラスって？</h2>
+
+<p>型クラスとは一言でいうと。</p>
+
+<ul>
+<li><strong>アドホック多相</strong> を実現するもの</li>
+</ul>
+
+<p>です。モから始まる名状し難いあれとは直接は関係ありません。</p>
+
+<p>ではアドホック多相とは何かというと</p>
+
+<ul>
+<li>異なる型の間で共通したインターフェースでの異なる振る舞いを</li>
+<li>定義済みの型に対して拡張する</li>
+</ul>
+
+<p>ような多相のことです。</p>
+
+<h3 id="異なる型間での共通したインターフェースでの異なる振る舞い:ddf777f65c6f902fd79034bf5064df77">異なる型間での共通したインターフェースでの異なる振る舞い</h3>
+
+<p>Javaの継承やインターフェース、Scalaのtraitを用いることで、異なる型間での共通したインターフェースを管理することができます。</p>
+
+<pre><code class="language-scala">trait SomeTrait {
+  def someMethod(): String
+}
+
+class Foo extends SomeTrait {
+  def someMethod(): String = &quot;foo&quot;
+}
+
+class Bar extends SomeTrait {
+  def someMethod(): String = &quot;bar&quot;
+}
+
+def someFunc(x: SomeTrait) = x.someMethod()
+
+someFunc(new Foo) //=&gt; foo
+someFunc(new Bar) //=&gt; bar
+</code></pre>
+
+<p>FooとBarで異なる振る舞いをするsomeMethodを、SomeTraitを通すことで共通して呼び出すことができています。</p>
+
+<p>これらは型の階層関係に基づいた多相性を提供するものです。 定義済みの型に対して新たなインターフェースを追加することはできません。</p>
+
+<h3 id="定義済みの型に対して拡張する:ddf777f65c6f902fd79034bf5064df77">定義済みの型に対して拡張する</h3>
+
+<p>Rubyのようなオープンクラスを採用している言語であれば特に何もせずに実現できます。</p>
+
+<pre><code class="language-ruby">class String
+  def hoge
+    &quot;hoge&quot;
+  end
+end
+
+&quot;fuga&quot;.hoge #=&gt; hoge
+</code></pre>
+
+<p>Scalaであればimplicit conversionを使うことで定義済みの型を拡張でき（るように見せられ）ます。</p>
+
+<pre><code class="language-scala">case class Hoge(s: String) {
+  def hoge() = &quot;hoge&quot;
+}
+
+implicit def stringToHoge(s: String) = Hoge(s)
+
+&quot;foo&quot;.hoge //=&gt; hoge
+</code></pre>
+
+<p>Rich~で普段から使っていると思います。</p>
+
+<p>これらの方法では型を拡張することはできますが、共通したインターフェースをまとめることは困難です。</p>
+
+<h3 id="そして型クラスへ:ddf777f65c6f902fd79034bf5064df77">そして型クラスへ</h3>
+
+<p>この2つの条件は型クラスによる多相では同時に満たすことが可能です。</p>
+
+<p>Haskellでは言語レベルで型クラスをサポートしているのでHaskellの例を見てみましょう。</p>
+
+<p>まず型クラス（とそのインターフェース）を定義します</p>
+
+<pre><code class="language-hs">class Who a where
+  who :: a -&gt; String
+</code></pre>
+
+<p>次にインスタンスを定義します。インスタンスでは、型クラスに属する型と、その型における振る舞いを定義します。</p>
+
+<pre><code class="language-hs">instance Who Int where
+  who i = &quot;Int&quot;
+
+instance Who Double where
+  who s = &quot;Double&quot;
+</code></pre>
+
+<p>最後に型クラスを利用します。</p>
+
+<pre><code class="language-hs">main = do
+  print $ who (1::Int) -- =&gt; Int
+  print $ who (1::Double) -- =&gt; Double
+</code></pre>
+
+<p>IntとDoubleという既存の型に対して、型名の文字列を返す <code>who</code> というインターフェースを追加しています。</p>
+
+<p>この <code>who</code> はWho型クラスで管理されているので、 <code>who</code> を利用する際は多相を利用し一つにまとめて定義することが可能です。</p>
+
+<pre><code class="language-hs">sayWho :: Who a =&gt; a -&gt; IO()
+sayWho x = print $ who x
+
+main = do
+  sayWho (1::Int)
+  sayWho (1::Double)
+</code></pre>
+
+<h3 id="参考資料:ddf777f65c6f902fd79034bf5064df77">参考資料</h3>
+
+<p>上記で型クラスの概要については理解できたでしょうか。</p>
+
+<p>型クラスについての素晴らしい資料は多くあるので、より詳細な内容についてはそちらを参照してください。</p>
+
+<ul>
+<li><a href="http://www.sampou.org/haskell/tutorial-j/classes.html">A Gentle Introduction to Haskell: Classes</a></li>
+<li><a href="http://www.haskell.org/haskellwiki/Typeclassopedia">Typeclassopedia - HaskellWiki</a></li>
+<li>日本語訳: <a href="http://snak.tdiary.net/20091020.html">The Typeclassopediaを訳しました, The Typeclassopedia - #3(2009-10-20)</a></li>
+<li><a href="http://eed3si9n.com/ja/node/15">Scala Implicits: 型クラス、襲来 | eed3si9n</a></li>
+</ul>
+
+<h2 id="scalaでの型クラス:ddf777f65c6f902fd79034bf5064df77">Scalaでの型クラス</h2>
+
+<p>Scalaでは言語レベルでの型クラスのサポートはありませんが、柔軟な言語仕様によって型クラスを実現することが可能です。</p>
+
+<p>型クラスを実現する手順は</p>
+
+<ol>
+<li>型クラスを定義する</li>
+<li>インスタンスを定義する</li>
+<li>型クラスを利用する</li>
+</ol>
+
+<p>Haskellの場合と同じですね。もちろんそれぞれの段階ですべきことは異なります。</p>
+
+<h3 id="1-型クラスを定義する:ddf777f65c6f902fd79034bf5064df77">1. 型クラスを定義する</h3>
+
+<p>Haskellではclassという組み込みの構文で定義しましたが、scalaではtraitか抽象クラスを用いて型クラスとします。 （HaskellのclassはScalaのclassとは全く異なるので注意！）</p>
+
+<p>traitの定義において、インスタンスを定義する型を、型パラメータとしておきます。</p>
+
+<pre><code class="language-scala">trait Who[T] {
+  def who(x: T): String
+}
+</code></pre>
+
+<h3 id="2-インスタンスを定義する:ddf777f65c6f902fd79034bf5064df77">2. インスタンスを定義する</h3>
+
+<p>Scalaでは型クラスの利用時に、 <strong>implicit parameter</strong> として明示的に型クラスのインスタンスを渡します。（具体的な呼び出し方は後述）</p>
+
+<p>型クラスのインスタンスがグローバルに暗黙的に定義されるHaskellとはここが異なります。</p>
+
+<p>よって、Scalaにおける型クラスのインスタンスはimplicit parameterとして渡せるものです</p>
+
+<ul>
+<li>implicit val/var</li>
+<li>implicit object</li>
+<li>引数リストなしのimplict def</li>
+</ul>
+
+<p>が利用できます。 （解説によって上記のいずれかをバラバラに利用していて混乱しますが、要はimplicit parameterとして渡せればいいのでどれでもいいです）</p>
+
+<ol>
+<li>型クラスの定義をする際にパラメータ化した型に、インスタンスとして定義する型を当てはめながら、</li>
+<li>値が
+
+<ul>
+<li>val/var/defの場合はtraitを無名で実装し、そのインスタンス（newするということです。ややこしい、、、）を返す</li>
+<li>objectの場合はtraitをミックスインして実装する</li>
+</ul></li>
+</ol>
+
+<p>とすることで、型クラスのインスタンスを定義することができます。</p>
+
+<p>文章にするとややこしいですが、例を見れば簡単です。</p>
+
+<pre><code class="language-scala">implicit def WhoInt = new Who[Int] {
+  def who(x: Int) = &quot;Int&quot;
+}
+
+implicit object WhoDouble extends Who[Double] {
+  def who(x: Double) = &quot;Double&quot;
+}
+</code></pre>
+
+<p>ここで <code>WhoInt WhoDouble</code> がそれぞれInt、DoubleにおけるWho型クラスのインスタンスです。 暗黙的なHaskellのインスタンスとことなり、プログラム中のオブジェクトとして明示的に存在しています。</p>
+
+<h3 id="3-型クラスを利用する:ddf777f65c6f902fd79034bf5064df77">3. 型クラスを利用する</h3>
+
+<p>型クラスを利用する際は、型をパラメータ化した関数を用います。 この型パラメータにはインスタンスが存在する型が入ることになります。</p>
+
+<pre><code class="language-scala">def sayWho[T](x: T)(implicit instance: Who[T]) = println(instance.who(x))
+
+val i = 1
+val d = 1.0
+
+sayWho(i) //=&gt; Int
+sayWho(d) //=&gt; Double
+</code></pre>
+
+<p>ここでは関数の引数として利用しました。一見単なるオーバーロードっぽく見えますが、実際には型クラスのインスタンスで多相を実現しているので、関数の定義はこの先インスタンスを増やしていってもこの一箇所のみです。</p>
+
+<p>メソッドとして利用する場合は、メソッドを定義したtraitなりにimplicit conversionさせることで実現できます。</p>
+
+<pre><code class="language-scala">trait WhoOps[T] {
+  def self: T
+  implicit def instance: Who[T]
+
+  def whoMethod() = instance.who(self)
+}
+
+implicit def ToWhoOps[T](v: T)(implicit i: Who[T]) =
+    new WhoOps[T] {
+      def self = v;
+      implicit def instance: Who[T] = i
+    }
+
+val i = 1
+val d = 1.0
+
+println(i.whoMethod) //=&gt; Int
+println(d.whoMethod) //=&gt; Double
+</code></pre>
+
+<h3 id="完成:ddf777f65c6f902fd79034bf5064df77">完成</h3>
+
+<p>以上で無事Scalaでの型クラスを実装することができました。</p>
+
+<p>この流れが理解できていればscalazのコードも読めるはずですので、後はコードを読んで理解を深めればいいのではと思います。</p>
+
+<h3 id="context-bound:ddf777f65c6f902fd79034bf5064df77">context bound</h3>
+
+<p>実際に型クラスを利用する際は、シンタックスシュガーであるcontext boundを用いて書くことが多いようです。</p>
+
+<pre><code class="language-scala">def sayWho[T: Who](x: T) = println(implicitly[Who[T]].who(x))
+</code></pre>
+
+<p>シンタックスシュガーですので上記の <code>sayWho</code> と全く同じ内容を表しています。 但しimplicit parameterは暗黙になってしまったので、implicitlyで実体化する必要があります。</p>
+
+<p>context boundの読み方としては &ldquo;Who[T]がimplicit parameterとしてスコープ内に存在するT&rdquo; といった感じでしょうか。</p>
+
+<p>ところでcontext boundは型クラスのインスタンスとして渡すくらいしか使い道が思い浮かばないのですが、この為に作られたんでしょうか？ Scalaの歴史に詳しい人教えてください。</p>
+</div>
+</article>
+					
+						<div class="share">
+	<div class="addthis_toolbox addthis_default_style ">
+	
+	<a class="addthis_button_facebook_like" fb:like:layout="button_count"></a>
+	
+	
+	<a class="addthis_button_tweet"></a>
+	
+	
+	<a class="addthis_button_google_plusone" g:plusone:size=''></a>
+	
+	
+	</div>
+	
+  	<script type="text/javascript" src='http://s7.addthis.com/js/250/addthis_widget.js#pubid='></script>
+  	
+</div>
+
+					
+					
+					<section id="comment">
+					    <h1 class="title">Comments</h1>
+					    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+					</section>
+					
+					
+
+<script type="text/javascript">
+    
+    var disqus_shortname = 'choplinblog';
+
+    
+    
+
+    
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+    
+</script>
+
+
+				    </div>
+				</div>
+			</div>
+			<footer id="footer" class="inner">Copyright &copy; 2015
+
+    still deeper
+
+<script src="http://chopl.in//js/slash.js"></script>
+<script src="http://chopl.in//js/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+	$('.fancybox').fancybox();
+})(jQuery);
+</script>
+</footer>
+		</div>
+	</div>
+	
+</body>
+</html>

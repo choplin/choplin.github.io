@@ -1,0 +1,342 @@
+<!DOCTYPE HTML>
+
+<html lang="ja-JP">
+
+<head>
+	<meta charset="utf-8">
+	<title>PostgreSQLのログをfluentdで回収する設定 - still deeper</title>
+	<meta name="author" content="map[author:Akihiro Okuno]">
+
+	
+	
+	<meta name="description" content="">
+	
+
+	
+	<meta name="HandheldFriendly" content="True">
+	<meta name="MobileOptimized" content="320">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+    
+	<link href='http://chopl.in/index.xml' rel="alternate" title="still deeper" type="application/atom+xml">
+	
+	<link rel="canonical" href="http://chopl.in/post/2013/06/07/postgresql_csv_log_with_fluentd/">
+	<link href="http://chopl.in//favicon.png" rel="shortcut icon">
+	<link href="http://chopl.in//css/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+	<link href="http://chopl.in//css/font-awesome.min.css" media="screen, projection" rel="stylesheet" type="text/css">
+	
+	<link href='http://fonts.googleapis.com/css?family=Nunito:400,300,700' rel='stylesheet' type='text/css'>
+	<script src="//ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+	
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.7/styles/tomorrow-night.min.css">
+
+<script src="http://chopl.in/js/highlight.pack.js"></script>
+<script>
+(function(){
+  function overwriteNoHighlight() {
+    var blocks = document.querySelectorAll('pre code');
+    Array.prototype.forEach.call(blocks, function(block) {
+      if (block.className == "") {
+        block.className = "language-no-highlight hljs";
+      }
+    });
+  }
+  addEventListener('DOMContentLoaded', overwriteNoHighlight, false);
+  addEventListener('load', overwriteNoHighlight, false);
+})();
+hljs.initHighlightingOnLoad();
+</script>
+
+<link rel="stylesheet" href="http://chopl.in/css/custom.css">
+
+  
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', 'UA-17761815-3']);
+		_gaq.push(['_trackPageview']);
+
+		(function() {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+
+
+</head>
+
+
+<body>
+	<div class="container">
+		<div class="left-col">
+			<div class="intrude-less">
+			<header id="header" class="inner"><div class="profilepic">
+	
+	<img src='http://www.gravatar.com/avatar/8a820699dff43e6b707a488b592e7a21?s=160' alt="Profile Picture" style="width: 160px;" />
+	
+</div>
+<h2>still deeper</h2>
+choplin&#39;s blog
+
+<nav id="main-nav"><ul class="main">
+    <li><a href="http://chopl.in/">Home</a></li>
+    <li><a href="http://chopl.in/post/">Archive</a></li>
+</ul>
+
+</nav>
+<nav id="sub-nav">
+	<div class="social">
+		
+		
+			<a class="facebook" href='http://www.facebook.com/okuno.akihiro' title="Facebook">Facebook</a>
+		
+		
+		
+			<a class="twitter" href='http://twitter.com/choplin' title="Twitter">Twitter</a>
+		
+		
+			<a class="github" href='https://github.com/choplin' title="GitHub">GitHub</a>
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+    	
+    	
+			<a class="rss" href='http://chopl.in/index.xml' title="RSS">RSS</a>
+		
+	</div>
+</nav>
+</header>
+			</div>
+		</div>
+		<div class="mid-col">
+			
+			<div class="mid-col-container">
+				<div id="content" class="inner">
+					<div itemscope itemtype="http://schema.org/Blog">
+					<article class="post" itemscope itemtype="http://schema.org/BlogPosting"><h1 class="title" itemprop="name">PostgreSQLのログをfluentdで回収する設定</h1>
+
+<div class="single-meta">
+  <span class="date"><time datetime='Fri, Jun 7, 2013' data-updated="true" itemprop="datePublished">Fri, Jun 7, 2013</time></span>
+  <span class="categories">
+
+
+	
+	
+	    <a href="http://chopl.in//categories/programming"> Programming </a>
+	
+
+
+</span>
+  <span class="tags">
+
+
+	
+	
+	    <a href="http://chopl.in//tags/fluentd-postgresql"> fluentd PostgreSQL </a>
+	
+
+
+</span>
+</div>
+
+<div class="entry-content" itemprop="articleBody">
+
+<p>PostgreSQLのログをfluentd経由で回収するようにしたので設定を晒しておきます。ほぼ同じ設定を使いまわせるはずなので、fluentd &amp; postgresの組み合わせを使っている人はどうぞ。</p>
+
+<h2 id="postgresql側:972d876c4986efee56c77ebbeac32ce6">PostgreSQL側</h2>
+
+<h3 id="postgresql-conf:972d876c4986efee56c77ebbeac32ce6">postgresql.conf</h3>
+
+<p>postgresのログの設定はこんな感じ。</p>
+
+<pre><code># csvlogを出力
+logging_collector = on
+log_destination = 'csvlog,stderr'
+
+# 1日でローテーション
+log_rotation_age = 1440
+
+# /var/log/pgsql/postgres-%Y%m%d.(log|csv)に出力
+log_directory = '/var/log/pgsql/'
+log_filename = 'postgres-%Y%m%d.log'
+
+# modeを644に
+log_file_mode = 0644
+</code></pre>
+
+<h3 id="cron:972d876c4986efee56c77ebbeac32ce6">cron</h3>
+
+<p>fluentdが一意な名前で参照できるようにcronでシンボリックリンクを張り替えます。張替えの際の諸々はfluentdが面倒を見てくれるので心配いりません。</p>
+
+<pre><code>5 0 * * * postgres ln -sf /var/log/pgsql/postgres-$(date +'\\%Y\\%m\\%d').csv /var/log/pgsql/postgres.csv
+</code></pre>
+
+<h2 id="flunetd側:972d876c4986efee56c77ebbeac32ce6">flunetd側</h2>
+
+<p>postgresのcsvログは1レコード内に改行が含まれている可能性があるので、 <a href="https://github.com/tomohisaota/fluent-plugin-tail-multiline">fluent-plugin-tail-multiline</a> を利用します。</p>
+
+<p>fluent-plugin-tail-multilineはtailに組み込みのパーサーは利用できないので正規表現で記述する必要があります。</p>
+
+<pre><code>&lt;source&gt;
+  type        tail_multiline
+  time_key    log_time
+  time_format %Y-%m-%d %H:%M:%S.%L %Z
+  path        /var/log/pgsql/postgres.csv
+  tag         postgresql
+  pos_file    /var/log/td-agent/postgresql.log.pos
+
+  format_firstline /^\d{4}-\d{2}-\d{2}/
+
+  format /^(?&lt;time&gt;[^&quot;,]*),&quot;?(?&lt;user_name&gt;(?:[^&quot;]|&quot;&quot;)*)&quot;?,&quot;?(?&lt;database_name&gt;(?:[^&quot;]|&quot;&quot;)*)&quot;?,(?&lt;process_id&gt;[^&quot;,]*),&quot;?(?&lt;connection_from&gt;(?:[^&quot;]|&quot;&quot;)*)&quot;?,(?&lt;session_id&gt;[^&quot;,]*),(?&lt;session_line_num&gt;[^&quot;,]*),&quot;?(?&lt;command_tag&gt;(?:[^&quot;]|&quot;&quot;)*)&quot;?,(?&lt;session_start_time&gt;[^&quot;,]*),(?&lt;virtual_transaction_id&gt;[^&quot;,]*),(?&lt;transaction_id&gt;[^&quot;,]*),(?&lt;error_severity&gt;[^&quot;,]*),(?&lt;sql_state_code&gt;[^&quot;,]*),&quot;?(?&lt;message&gt;(?:[^&quot;]|&quot;&quot;)*)&quot;?,(?&lt;detail&gt;[^&quot;,]*),&quot;?(?&lt;hint&gt;(?:[^&quot;]|&quot;&quot;)*)&quot;?,(?&lt;internal_query&gt;[^&quot;,]*),(?&lt;internal_query_pos&gt;[^&quot;,]*),(?&lt;context&gt;[^&quot;,]*),(?&lt;query&gt;[^&quot;,]*),(?&lt;query_pos&gt;[^&quot;,]*),(?&lt;location&gt;[^&quot;,]*),&quot;?(?&lt;application_name&gt;(?:[^&quot;]|&quot;&quot;)*)&quot;?$/
+
+&lt;/source&gt;
+</code></pre>
+
+<p>この設定をしておけば、こんな感じのメッセージが取れます</p>
+
+<pre><code>tag: postgres
+time: 2013-06-07 06:00:30 +0000
+record: {
+ &quot;application_name&quot;: &quot;psql&quot;,
+ &quot;location&quot;: &quot;&quot;,
+ &quot;query_pos&quot;: &quot;&quot;,
+ &quot;query&quot;: &quot;&quot;,
+ &quot;context&quot;: &quot;&quot;,
+ &quot;internal_query_pos&quot;: &quot;&quot;,
+ &quot;session_start_time&quot;: &quot;2013-06-07 06:00:13 GMT&quot;,
+ &quot;command_tag&quot;: &quot;SELECT&quot;,
+ &quot;session_line_num&quot;: &quot;1&quot;,
+ &quot;session_id&quot;: &quot;51b176ed.4f4e&quot;,
+ &quot;connection_from&quot;: &quot;[local]&quot;,
+ &quot;process_id&quot;: &quot;20302&quot;,
+ &quot;database_name&quot;: &quot;my_database&quot;,
+ &quot;user_name&quot;: &quot;postgres&quot;,
+ &quot;virtual_transaction_id&quot;: &quot;109/0&quot;,
+ &quot;transaction_id&quot;: &quot;0&quot;,
+ &quot;error_severity&quot;: &quot;LOG&quot;,
+ &quot;sql_state_code&quot;: &quot;00000&quot;,
+ &quot;message&quot;: &quot;duration: 11002.537 ms  statement: select pg_sleep(11);&quot;,
+ &quot;detail&quot;: &quot;&quot;,
+ &quot;hint&quot;: &quot;&quot;,
+ &quot;internal_query&quot;: &quot;&quot;
+}
+</code></pre>
+
+<h2 id="その後:972d876c4986efee56c77ebbeac32ce6">その後</h2>
+
+<p>この設定でログを全て集約できます。利用方法の例としては、スロークエリの検知などに使えますね。</p>
+
+<p>その場合は、messageのフィールドにスロークエリ周りの情報がまとめて入ってしまっているので、 <a href="https://github.com/y-ken/fluent-plugin-rewrite-tag-filter">fluent-plugin-rewrite-tag-filter</a> でスロークエリとそれ以外でtagを振り分けた後に、 <a href="https://github.com/tagomoris/fluent-plugin-parser">fluent-plugin-parser</a> や <a href="https://github.com/tomity/fluent-plugin-map">fluent-plugin-map</a> などrecordを書き換えられるpluginでパースしてやればいいと思います。</p>
+
+<h2 id="追記:972d876c4986efee56c77ebbeac32ce6">追記</h2>
+
+<p>投げっぱなしも何なので、スロークエリのみを取り分けて、messageをパースして、結果を <a href="http://kibana.org/">Kibana</a> に入れるところまでの設定を書いておきます。Kibanaに入れておけば、検索はできるわ統計は取れるわでウハウハです。これからはfluentdにKibanaの時代ですね。</p>
+
+<p>下記の設定だとスロークエリ以外のログは捨ててますが、一緒にKinabaに入れてもいいかもしれません。</p>
+
+<pre><code>&lt;match postgresql&gt;
+  type rewrite_tag_filter
+
+  rewriterule1 message ^duration: postgresql.slow_query
+  rewriterule2 message .*         postgresql.others
+&lt;/match&gt;
+
+&lt;match postgresql.others&gt;
+  type null
+&lt;/match&gt;
+
+&lt;match postgresql.slow_query&gt;
+  type         parser
+  add_prefix   parsed
+  reserve_data yes
+  key_name     message
+
+  format /^duration: (?&lt;duration&gt;[0-9\.]+) ms  statement: (?&lt;statement&gt;.+)$/
+&lt;/match&gt;
+
+&lt;match parsed.postgresql.slow_query&gt;
+  type elasticsearch
+  logstash_format true
+&lt;/match&gt;
+</code></pre>
+
+<p>これだけの設定をしておけば、Kibanaに全部のスロークエリが入ってきます。</p>
+
+<p><img src="../../../../img/blog/kibana_slow_query.jpg" alt="image" /></p>
+
+<p>いい感じですね。ログはいざという時にパッと見れないと困るので、こうやっていつでも誰でも見れるようにしておくと捗りますね。</p>
+</div>
+</article>
+					
+						<div class="share">
+	<div class="addthis_toolbox addthis_default_style ">
+	
+	<a class="addthis_button_facebook_like" fb:like:layout="button_count"></a>
+	
+	
+	<a class="addthis_button_tweet"></a>
+	
+	
+	<a class="addthis_button_google_plusone" g:plusone:size=''></a>
+	
+	
+	</div>
+	
+  	<script type="text/javascript" src='http://s7.addthis.com/js/250/addthis_widget.js#pubid='></script>
+  	
+</div>
+
+					
+					
+					<section id="comment">
+					    <h1 class="title">Comments</h1>
+					    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+					</section>
+					
+					
+
+<script type="text/javascript">
+    
+    var disqus_shortname = 'choplinblog';
+
+    
+    
+
+    
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+    
+</script>
+
+
+				    </div>
+				</div>
+			</div>
+			<footer id="footer" class="inner">Copyright &copy; 2015
+
+    still deeper
+
+<script src="http://chopl.in//js/slash.js"></script>
+<script src="http://chopl.in//js/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+	$('.fancybox').fancybox();
+})(jQuery);
+</script>
+</footer>
+		</div>
+	</div>
+	
+</body>
+</html>

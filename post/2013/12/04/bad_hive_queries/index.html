@@ -1,0 +1,467 @@
+<!DOCTYPE HTML>
+
+<html lang="ja-JP">
+
+<head>
+	<meta charset="utf-8">
+	<title>SQL感覚でHiveQLを書くと痛い目にあう例 - still deeper</title>
+	<meta name="author" content="map[author:Akihiro Okuno]">
+
+	
+	
+	<meta name="description" content="">
+	
+
+	
+	<meta name="HandheldFriendly" content="True">
+	<meta name="MobileOptimized" content="320">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+    
+	<link href='http://chopl.in/index.xml' rel="alternate" title="still deeper" type="application/atom+xml">
+	
+	<link rel="canonical" href="http://chopl.in/post/2013/12/04/bad_hive_queries/">
+	<link href="http://chopl.in//favicon.png" rel="shortcut icon">
+	<link href="http://chopl.in//css/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+	<link href="http://chopl.in//css/font-awesome.min.css" media="screen, projection" rel="stylesheet" type="text/css">
+	
+	<link href='http://fonts.googleapis.com/css?family=Nunito:400,300,700' rel='stylesheet' type='text/css'>
+	<script src="//ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+	
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.7/styles/tomorrow-night.min.css">
+
+<script src="http://chopl.in/js/highlight.pack.js"></script>
+<script>
+(function(){
+  function overwriteNoHighlight() {
+    var blocks = document.querySelectorAll('pre code');
+    Array.prototype.forEach.call(blocks, function(block) {
+      if (block.className == "") {
+        block.className = "language-no-highlight hljs";
+      }
+    });
+  }
+  addEventListener('DOMContentLoaded', overwriteNoHighlight, false);
+  addEventListener('load', overwriteNoHighlight, false);
+})();
+hljs.initHighlightingOnLoad();
+</script>
+
+<link rel="stylesheet" href="http://chopl.in/css/custom.css">
+
+  
+	<script type="text/javascript">
+		var _gaq = _gaq || [];
+		_gaq.push(['_setAccount', 'UA-17761815-3']);
+		_gaq.push(['_trackPageview']);
+
+		(function() {
+			var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+			ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+			var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+		})();
+	</script>
+
+
+</head>
+
+
+<body>
+	<div class="container">
+		<div class="left-col">
+			<div class="intrude-less">
+			<header id="header" class="inner"><div class="profilepic">
+	
+	<img src='http://www.gravatar.com/avatar/8a820699dff43e6b707a488b592e7a21?s=160' alt="Profile Picture" style="width: 160px;" />
+	
+</div>
+<h2>still deeper</h2>
+choplin&#39;s blog
+
+<nav id="main-nav"><ul class="main">
+    <li><a href="http://chopl.in/">Home</a></li>
+    <li><a href="http://chopl.in/post/">Archive</a></li>
+</ul>
+
+</nav>
+<nav id="sub-nav">
+	<div class="social">
+		
+		
+			<a class="facebook" href='http://www.facebook.com/okuno.akihiro' title="Facebook">Facebook</a>
+		
+		
+		
+			<a class="twitter" href='http://twitter.com/choplin' title="Twitter">Twitter</a>
+		
+		
+			<a class="github" href='https://github.com/choplin' title="GitHub">GitHub</a>
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+    	
+    	
+			<a class="rss" href='http://chopl.in/index.xml' title="RSS">RSS</a>
+		
+	</div>
+</nav>
+</header>
+			</div>
+		</div>
+		<div class="mid-col">
+			
+			<div class="mid-col-container">
+				<div id="content" class="inner">
+					<div itemscope itemtype="http://schema.org/Blog">
+					<article class="post" itemscope itemtype="http://schema.org/BlogPosting"><h1 class="title" itemprop="name">SQL感覚でHiveQLを書くと痛い目にあう例</h1>
+
+<div class="single-meta">
+  <span class="date"><time datetime='Wed, Dec 4, 2013' data-updated="true" itemprop="datePublished">Wed, Dec 4, 2013</time></span>
+  <span class="categories">
+
+
+	
+	
+	    <a href="http://chopl.in//categories/programming"> Programming </a>
+	
+
+
+</span>
+  <span class="tags">
+
+
+	
+	
+		<a href="http://chopl.in//tags/hadoop"> Hadoop </a>,
+	
+
+	
+	
+	    <a href="http://chopl.in//tags/hive"> Hive </a>
+	
+
+
+</span>
+</div>
+
+<div class="entry-content" itemprop="articleBody">
+
+<p><a href="http://qiita.com/advent-calendar/2013/hadoop">Hadoop Advent Calendar 2013</a> 4日目の記事です</p>
+
+<h2 id="tl-dr:39424a15261f01941b0f172928e13b39">tl;dr</h2>
+
+<ul>
+<li>explainとjob historyを読め</li>
+<li>1 reducerは悪</li>
+<li>data skewは悪</li>
+</ul>
+
+<h2 id="前書き:39424a15261f01941b0f172928e13b39">前書き</h2>
+
+<p>みんな大好きSQLでHadoop上での処理を実行できるHiveにはみなさん普段からお世話になっていることでしょう。ちょっと調べ物でググる度に目に入る愛らいしいマスコットが、荒んだ心に清涼な風をはこんでくれます。</p>
+
+<p>ですがHiveのクエリ言語はSQLではなくHiveQLですし、実行エンジンもRDBのそれとは全く異なるMapReduceです。SQLのつもりでHiveQLを書いていると地雷を踏んでしまうことがまれによくあります。本エントリでは陥りがちなHiveQLの落とし穴を2つ紹介します。</p>
+
+<h2 id="例1:39424a15261f01941b0f172928e13b39">例1</h2>
+
+<pre><code class="language-sql">SELECT count(DISTINCT user_id) FROM access_log
+</code></pre>
+
+<p>SQLに慣れた方であれば、集約関数の中に DISTINCT や ORDER BY を入れて用いることは多いと思います。Hiveでは全ての集約関数で利用できるわけではないのですが、この例のように count 内での DISTINCT は利用することができます。</p>
+
+<p>例のHiveQLではアクセスログからユニークユーザー数を計算しています。一つのクエリで完結していて美しいですね。一体どこが問題なのでしょうか？</p>
+
+<p>データによるところが大きいですが、以下のようにクエリを書くと速くなる場合があります。</p>
+
+<pre><code class="language-sql">SELECT
+    count(*)
+FROM (
+    SELECT
+        DISTINCT
+        user_id
+    FROM
+        access_log
+) t
+</code></pre>
+
+<p>せっかく <code>count(DISTINCT )</code> で綺麗に一つにまとめられていたところをわざわざサブクエリに分割しています。なぜこちらの方が速くなるのでしょうか？</p>
+
+<p>一つ目のクエリでEXPLAINを実行すると以下の様なプランになります。</p>
+
+<p>ここで重要な事は、全体として一つのMapReduceになっている、ということです。一つのMapReduceで重複を除きつつカウントを行うなら、Reducerは一つで処理を実行する必要があります。そのためReducerで分散処理ができず、遅くなってしまうことがある、というわけです。</p>
+
+<pre><code>STAGE DEPENDENCIES:
+  Stage-1 is a root stage
+  Stage-0 is a root stage
+
+STAGE PLANS:
+  Stage: Stage-1
+    Map Reduce
+      Alias -&gt; Map Operator Tree:
+        access_log
+          TableScan
+            alias: access_log
+            Select Operator
+              expressions:
+                    expr: user_id
+                    type: string
+              outputColumnNames: user_id
+              Group By Operator
+                aggregations:
+                      expr: count(DISTINCT user_id)
+                bucketGroup: false
+                keys:
+                      expr: user_id
+                      type: string
+                mode: hash
+                outputColumnNames: _col0, _col1
+                Reduce Output Operator
+                  key expressions:
+                        expr: _col0
+                        type: string
+                  sort order: +
+                  tag: -1
+                  value expressions:
+                        expr: _col1
+                        type: bigint
+      Reduce Operator Tree:
+        Group By Operator
+          aggregations:
+                expr: count(DISTINCT KEY._col0:0._col0)
+          bucketGroup: false
+          mode: mergepartial
+                    outputColumnNames: _col0
+      Select Operator
+        expressions:
+              expr: _col0
+              type: bigint
+        outputColumnNames: _col0
+        File Output Operator
+          compressed: true
+          GlobalTableId: 0
+          table:
+              input format: org.apache.hadoop.mapred.TextInputFormat
+              output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+
+Stage: Stage-0
+Fetch Operator
+  limit: -1
+</code></pre>
+
+<p>一方、二つ目のクエリは、サブクエリを用いているためMapReduceの数は増えていますが、user_idをpartition keyとしてデータが分割されるため、Reducerでも効率よく分散処理を行うことができます。</p>
+
+<pre><code>STAGE DEPENDENCIES:
+  Stage-1 is a root stage
+  Stage-2 depends on stages: Stage-1
+  Stage-0 is a root stage
+
+STAGE PLANS:
+  Stage: Stage-1
+    Map Reduce
+      Alias -&gt; Map Operator Tree:
+        t:access_log
+          TableScan
+            alias: access_log
+            Select Operator
+              expressions:
+                    expr: user_id
+                    type: string
+              outputColumnNames: user_id
+              Group By Operator
+                bucketGroup: false
+                keys:
+                      expr: user_id
+                      type: string
+                mode: hash
+                outputColumnNames: _col0
+                Reduce Output Operator
+                  key expressions:
+                        expr: _col0
+                        type: string
+                  sort order: +
+                  Map-reduce partition columns:
+                        expr: _col0
+                        type: string
+                  tag: -1
+      Reduce Operator Tree:
+        Group By Operator
+          bucketGroup: false
+          keys:
+                expr: KEY._col0
+                type: string
+          mode: mergepartial
+          outputColumnNames: _col0
+          Select Operator
+              Select Operator
+                Group By Operator
+                  aggregations:
+                        expr: count()
+                  bucketGroup: false
+                  mode: hash
+                  outputColumnNames: _col0
+                  File Output Operator
+                    compressed: true
+                    GlobalTableId: 0
+                    table:
+                        input format: org.apache.hadoop.mapred.SequenceFileInputFormat
+                        output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+
+Stage: Stage-2
+  Map Reduce
+    Alias -&gt; Map Operator Tree:
+      hdfs://cdh4cluster/tmp/hive-okuno/hive_2013-12-04_13-33-10_514_1739731017764214960/-mr-10002
+          Reduce Output Operator
+            sort order:
+            tag: -1
+            value expressions:
+                  expr: _col0
+                  type: bigint
+    Reduce Operator Tree:
+      Group By Operator
+        aggregations:
+              expr: count(VALUE._col0)
+        bucketGroup: false
+        mode: mergepartial
+        outputColumnNames: _col0
+        Select Operator
+          expressions:
+                expr: _col0
+                type: bigint
+          outputColumnNames: _col0
+          File Output Operator
+            compressed: true
+            GlobalTableId: 0
+            table:
+                input format: org.apache.hadoop.mapred.TextInputFormat
+                output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+
+Stage: Stage-0
+  Fetch Operator
+    limit: -1
+</code></pre>
+
+<p>この二つの例のように、効率よくReducerを利用できているかどうか、というのは正直なところEXPLAINを見ているだけでは分かりません（熟練すれば分かるかもしれませんが）。そういう場合でも、実際にクエリを実行してみればReducerで詰まっている様子が一目で分かると思います。</p>
+
+<h3 id="例2:39424a15261f01941b0f172928e13b39">例2</h3>
+
+<p>例2のクエリはこちら。</p>
+
+<pre><code class="language-sql">SELECT
+    sales.product_id,
+    sum(product.price * sales.num)
+FROM
+    sales
+INNER JOIN
+    product ON sales.product_id = product.product_id
+GROUP BY
+    sales.product_id
+</code></pre>
+
+<p>販売履歴に商品マスタをJOINして、商品毎の売上をだしている、と想定して下さい。</p>
+
+<p>このクエリは以下のようにすると速くなる可能性があります。（もちろんデータによります）</p>
+
+<pre><code class="language-sql">SELECT
+    sales.product_id,
+    product.price * total_num
+FROM (
+    SELECT
+        product_id,
+        sum(num) AS total_num
+    FROM
+        sales
+    GROUP BY
+        product_id
+) sales
+INNER JOIN
+    product ON sales.product_id = product.product_id
+</code></pre>
+
+<p>このクエリもSQLに慣れた人なら避けて最初の例のように書くのではないでしょうか。</p>
+
+<p>後者の例が速くなるポイントはデータの偏り(data skew)です。</p>
+
+<p>一つ目のクエリでは、salesおよびproductのデータがproduct_idでpartitionされてReducerに配られます。その時、sales内に飛び抜けて売れた商品があると、あるReducerにだけデータが大量に集まってきてしまいます。そうした大量のデータに対するJOINは非常に遅い処理になってしまいます。その結果、そのReducerだけ処理時間が長くなってしまい、結局Job全体としても遅くなります。</p>
+
+<p>一方、二つ目のクエリではMapReduceの数は増えてしまいますが、一段目のMapReduceではMap側集約を利用でき効率よく集約を行うことができます。二段目のMapReduceでは一段目でsalesがproduct_idで集約されて各product_idについて一行しか存在しないため、productとのJOINも非常に軽い処理で済むようになっています。</p>
+
+<p>但し、product側が十分に小さくmap-site joinが利用できる場合は話が全く別です。その場合は、まず間違いなく一つ目のクエリの方が速くなるでしょう。</p>
+
+<h2 id="まとめ:39424a15261f01941b0f172928e13b39">まとめ</h2>
+
+<p>Hiveは大変便利なのですが、上記の例のようにデータの量や偏りによって効率のいいクエリが全く異なるケースがあって厄介です（RDBでも同じですが）。クエリを選択する際にはSQLの常識は通じないことが多いので、Hiveを利用する際にはその事を意識しておくべきでしょう。めんどうでもEXPLAINでプランを見つつ、実際に実行してみて効率の悪いMapReduceになっていないか常にチェックしていくしかないと思います。</p>
+</div>
+</article>
+					
+						<div class="share">
+	<div class="addthis_toolbox addthis_default_style ">
+	
+	<a class="addthis_button_facebook_like" fb:like:layout="button_count"></a>
+	
+	
+	<a class="addthis_button_tweet"></a>
+	
+	
+	<a class="addthis_button_google_plusone" g:plusone:size=''></a>
+	
+	
+	</div>
+	
+  	<script type="text/javascript" src='http://s7.addthis.com/js/250/addthis_widget.js#pubid='></script>
+  	
+</div>
+
+					
+					
+					<section id="comment">
+					    <h1 class="title">Comments</h1>
+					    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+					</section>
+					
+					
+
+<script type="text/javascript">
+    
+    var disqus_shortname = 'choplinblog';
+
+    
+    
+
+    
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+    
+</script>
+
+
+				    </div>
+				</div>
+			</div>
+			<footer id="footer" class="inner">Copyright &copy; 2015
+
+    still deeper
+
+<script src="http://chopl.in//js/slash.js"></script>
+<script src="http://chopl.in//js/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+	$('.fancybox').fancybox();
+})(jQuery);
+</script>
+</footer>
+		</div>
+	</div>
+	
+</body>
+</html>
